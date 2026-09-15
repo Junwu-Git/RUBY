@@ -359,7 +359,7 @@ export async function runPipeline(taskBatch) {
             }
         }
 
-        // 总结接口（小白x / SP·数据库）：已总结楼层用总结替代正文。
+        // 总结接口（小白x / SP·数据库 / 柚月记忆表 / 柏宝书）：已总结楼层用总结替代正文。
         // 只改变"分析素材内容"，楼层/周期/书签计算全部维持原样（countAiReplies 与书签推进不受影响）。
         const provider = cfgData.summaryProvider || '';
         let providerSummary = null; // { boundary(消息索引), text, label }
@@ -395,6 +395,17 @@ export async function runPipeline(taskBatch) {
                 }
             } catch (e) {
                 warn(`yuzuki-Memory summary read failed: ${e?.message || e}`);
+            }
+        } else if (provider === 'baibaibook') {
+            try {
+                const bbs = reader.getBaiBaiSummary(cfgData.baibaiIncludeHistory !== false);
+                if (bbs) {
+                    providerSummary = { boundary: bbs.boundary, text: bbs.text, label: '柏宝书·剧情总结' };
+                } else {
+                    warn('baibaibook summary unavailable (not installed or no data), falling back to raw text');
+                }
+            } catch (e) {
+                warn(`baibaibook summary read failed: ${e?.message || e}`);
             }
         }
 

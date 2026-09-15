@@ -136,10 +136,12 @@ export function normalizeConfigData(raw) {
     result.customContentTags = Array.isArray(data.customContentTags)
         ? data.customContentTags.filter((t) => typeof t === 'string' && t.trim())
         : [];
-    // 总结接口：''=关闭；'littlewhitebox'=小白x；'shujuku'=SP·数据库；'yuzuki'=柚月记忆表
-    result.summaryProvider = ['littlewhitebox', 'shujuku', 'yuzuki'].includes(data.summaryProvider) ? data.summaryProvider : '';
+    // 总结接口：''=关闭；'littlewhitebox'=小白x；'shujuku'=SP·数据库；'yuzuki'=柚月记忆表；'baibaibook'=柏宝书
+    result.summaryProvider = ['littlewhitebox', 'shujuku', 'yuzuki', 'baibaibook'].includes(data.summaryProvider) ? data.summaryProvider : '';
     // 柚月记忆表：剧情摘要时间线是否随记忆总结一并注入（默认开）
     result.yuzukiIncludePlot = data.yuzukiIncludePlot !== false;
+    // 柏宝书：压缩剧情历史是否随状态快照一并注入（默认开；关闭后仅用状态快照）
+    result.baibaiIncludeHistory = data.baibaiIncludeHistory !== false;
     result.presets = Array.isArray(data.presets) && data.presets.length > 0
         ? data.presets.map(normalizePreset)
         : [makeDefaultPreset()];
@@ -460,8 +462,9 @@ export function parseImportTemplate(raw) {
         customContentTags: Array.isArray(data.customContentTags)
             ? data.customContentTags.filter((t) => typeof t === 'string' && t.trim())
             : [],
-        summaryProvider: ['littlewhitebox', 'shujuku', 'yuzuki'].includes(data.summaryProvider) ? data.summaryProvider : '',
+        summaryProvider: ['littlewhitebox', 'shujuku', 'yuzuki', 'baibaibook'].includes(data.summaryProvider) ? data.summaryProvider : '',
         yuzukiIncludePlot: data.yuzukiIncludePlot !== false,
+        baibaiIncludeHistory: data.baibaiIncludeHistory !== false,
         jailbreak: data.jailbreak || null,
         gen: (data.gen && typeof data.gen === 'object') ? data.gen : {},
         presets,

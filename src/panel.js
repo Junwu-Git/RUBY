@@ -6,7 +6,7 @@ import * as engine from './engine.js';
 import * as ai from './ai.js';
 import * as worldbook from './worldbook.js';
 import * as cardwriter from './cardwriter.js';
-import { countAiReplies, getLittleWhiteBoxSummary, getShujukuBoundary, getYuzukiStatus, ordinalForIndex } from './reader.js';
+import { countAiReplies, getLittleWhiteBoxSummary, getShujukuBoundary, getYuzukiStatus, getBaiBaiStatus, ordinalForIndex } from './reader.js';
 import { isDarkMode } from './settings.js';
 import { BUILTIN_REFERENCES, findShadowingKey } from './builtin-refs.js';
 
@@ -1420,6 +1420,11 @@ const SUMMARY_PROVIDERS = [
         name: '柚月记忆表（yuzuki-Memory）总结',
         description: '读取yuzuki-Memory写入聊天元数据的记忆总结表（总结标题/核心角色/楼层/总结内容/未解决问题），已总结楼层用总结替代原文；剧情摘要时间线可一并注入。',
     },
+    {
+        id: 'baibaibook',
+        name: '柏宝书（ST-BaiBaiBook）剧情总结',
+        description: '通过柏宝书公开 API 读取当前状态快照与压缩剧情历史，已总结楼层用其总结替代原文；压缩历史可由面板开关关闭。',
+    },
 ];
 
 function renderSummaryProviders(data) {
@@ -1472,12 +1477,36 @@ function renderSummaryProviders(data) {
                     ⚠️ 当前聊天未检测到柚月记忆表数据（未安装 yuzuki-Memory、或本聊天还没生成记忆总结）。启用后分析会先回退纯原文模式，检测到数据后自动生效。
                 </div>`;
             }
+        } else if (p.id === 'baibaibook') {
+            const bbs = getBaiBaiStatus();
+            if (bbs) {
+                const c = ctx();
+                const boundaryOrdinal = ordinalForIndex(c?.chat || [], bbs.boundary);
+                const totalFloors = countAiReplies(c?.chat || []);
+                const cov = bbs.coverage;
+                const covText = cov && cov.complete === false
+                    ? `存在缺失楼层 ${Array.isArray(cov.missingAiFloors) ? cov.missingAiFloors.length : '?'} 个`
+                    : '覆盖完整';
+                statusHtml = `<div style="font-size:12px;color:#666;margin-top:8px;">
+                    ✅ 检测到柏宝书记忆：已总结至第 <strong>${boundaryOrdinal}</strong> 楼（共${totalFloors}楼）· ${covText}。状态快照与压缩历史将在分析时经公开 API 读取。
+                </div>`;
+            } else {
+                statusHtml = `<div style="font-size:12px;color:#8B4513;margin-top:8px;">
+                    ⚠️ 当前聊天未检测到柏宝书记忆数据（未安装柏宝书、或本聊天还没运行过总结）。启用后分析会先回退纯原文模式，检测到数据后自动生效。
+                </div>`;
+            }
         }
         let extraHtml = '';
         if (p.id === 'yuzuki' && isOn) {
             extraHtml = `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#666;margin-top:8px;cursor:pointer;">
                 <input type="checkbox" id="ra_yuzuki_plot" ${data.yuzukiIncludePlot !== false ? 'checked' : ''}>
                 剧情摘要时间线一并注入（关闭后总结素材仅使用记忆总结表）
+            </label>`;
+        }
+        if (p.id === 'baibaibook' && isOn) {
+            extraHtml = `<label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#666;margin-top:8px;cursor:pointer;">
+                <input type="checkbox" id="ra_baibai_history" ${data.baibaiIncludeHistory !== false ? 'checked' : ''}>
+                压缩剧情历史一并注入（关闭后总结素材仅使用状态快照）
             </label>`;
         }
         return `
@@ -1499,6 +1528,14 @@ function renderSummaryProviders(data) {
         on(yuzukiPlotToggle, 'change', (e) => {
             withConfigData((d) => { d.yuzukiIncludePlot = e.target.checked; });
             window.toastr?.success?.(e.target.checked ? '剧情摘要时间线已并入总结素材' : '总结素材仅使用记忆总结表');
+        });
+    }
+
+    const baibaiHistoryToggle = $('ra_baibai_history');
+    if (baibaiHistoryToggle) {
+        on(baibaiHistoryToggle, 'change', (e) => {
+            withConfigData((d) => { d.baibaiIncludeHistory = e.target.checked; });
+            window.toastr?.success?.(e.target.checked ? '压缩剧情历史已并入总结素材' : '总结素材仅使用状态快照');
         });
     }
 
@@ -2456,6 +2493,7 @@ function generateExportData() {
         customContentTags: data.customContentTags || [],
         summaryProvider: data.summaryProvider || '',
         yuzukiIncludePlot: data.yuzukiIncludePlot !== false,
+        baibaiIncludeHistory: data.baibaiIncludeHistory !== false,
         jailbreak: jailbreak.normalizeJailbreakConfig(data.jailbreak),
         gen: data.gen || {},
         activePresetId: data.activePresetId,
@@ -2503,6 +2541,7 @@ function wirePresetIoControls() {
                 d.customContentTags = parsed.customContentTags;
                 d.summaryProvider = parsed.summaryProvider;
                 d.yuzukiIncludePlot = parsed.yuzukiIncludePlot !== false;
+                d.baibaiIncludeHistory = parsed.baibaiIncludeHistory !== false;
                 d.jailbreak = parsed.jailbreak;
                 d.gen = parsed.gen;
                 d.presets = parsed.presets;
