@@ -278,6 +278,20 @@ async function refreshRoadmapEntry(book, entries, stepId) {
     });
 }
 
+/** 世界书编辑器当前正显示该书时，重渲染为最新落盘状态。
+ *  ST 的 /createentry 会用"扩展尚未保存禁用状态"的中间态缓存刷新编辑器，
+ *  且编辑器不会随扩展的 saveWorldInfo 自动刷新——不补这一下，用户看到的就是
+ *  旧步骤仍开启的假象，随手编辑还会把假象写回磁盘 */
+function reloadEditorIfShowing(book) {
+    try {
+        const sel = $('#world_editor_select');
+        if (!sel?.length) return;
+        const selected = sel.find('option:selected')?.[0];
+        if (!selected || selected.textContent !== book) return;
+        sel.trigger('change');
+    } catch { /* 编辑器未打开或不可用 */ }
+}
+
 async function setStepEntries(book, stepId) {
     const c = ctx();
     const data = await c.loadWorldInfo(book);
@@ -306,6 +320,12 @@ async function setStepEntries(book, stepId) {
             if (e) e.disable = true;
         }
     }
+
+    // ★ 第一段原子提交：先落盘"全部步骤已关闭"的基准状态。
+    //   之后 /createentry 触发的中间态缓存与编辑器刷新都基于旧步骤已关闭的数据，
+    //   世界书里任何时刻都不会出现上一步与新步骤同时开启的状态
+    await saveBook(book, data);
+
     if (stepId) {
         const step = getStep(stepId);
         if (step) {
@@ -331,10 +351,13 @@ async function setStepEntries(book, stepId) {
         }
     }
 
-    // 流程路线图：常驻注入，随当前步骤刷新
+    // 流程路线图：常驻注入，随当前步骤刷新（放在基准落盘后，避免其创建过程带回旧状态）
     await refreshRoadmapEntry(book, entries, stepId);
 
+    // ★ 第二段原子提交：开启目标步骤的最终状态
     await saveBook(book, data);
+    reloadEditorIfShowing(book);
+
     if (holdRemoved || legacyRemoved || cleanupRemoved) {
         log(`[cardwriter] cleanup on switch -> ${stepId || 'none'}: hold=${holdRemoved} legacy=${legacyRemoved} stepArtifacts=${cleanupRemoved}`);
     }
@@ -651,6 +674,7 @@ export async function endSession({ keepDrafts = true } = {}) {
                 }
             }
             await saveBook(book, data);
+            reloadEditorIfShowing(book);
         }
         Object.assign(state, {
             active: false,
@@ -775,6 +799,7 @@ async function finalCleanup() {
         }
     }
     await saveBook(book, data);
+    reloadEditorIfShowing(book);
     log(`[cardwriter] final cleanup: removed ${removedKeys.size} entries (${[...removedKeys].join(', ')}), kept: ${[...KEEP_DRAFTS].filter((k) => findEntryIn(entries, k)).join(', ')}`);
     return { removed: removedKeys.size, kept: [...KEEP_DRAFTS].filter((k) => findEntryIn(entries, k)) };
 }
@@ -930,8 +955,14 @@ export function openDraftBook() {
         $('#WIDrawerIcon')?.trigger?.('click');
         const sel = $('#world_editor_select');
         if (sel?.length) {
-            sel.val(DRAFT_BOOK).trigger('change');
-            return true;
+            // 下拉项 value 是索引、text 才是书名：按 text 匹配后用对应 value 选中
+            const opt = sel.find('option').toArray().find((o) => o.textContent === DRAFT_BOOK);
+            if (opt) {
+                sel.val(opt.value).trigger('change');
+                return true;
+            }
+            warn('[cardwriter] draft book not found in world list (is a chat open?)');
+            return false;
         }
         warn('[cardwriter] world editor select not found');
         return false;

@@ -106,9 +106,10 @@ function guideToHtml(guide) {
 }
 
 function showStepBubble(stepId) {
+    // 先收起上一步的气泡：即使新步骤没有说明文本（Step5-8）也要确保旧气泡被关闭
+    hideStepBubble();
     const step = cardwriter.getStep(stepId);
     if (!step || !step.guide) return;
-    hideStepBubble();
     const orb = document.getElementById(ORB_ID);
     if (!orb) return;
 
@@ -282,8 +283,13 @@ export function ensureOrb() {
     cardwriter.onStateChange((s) => {
         const el = document.getElementById(ORB_ID);
         if (el) setStatus(el, engine.getEngineState());
-        // 步骤切换时弹出说明气泡（可关闭，60秒自动收起）
-        if (s.active && s.stepId && s.stepId !== lastBubbleStep) {
+        // 步骤切换时弹出说明气泡（可关闭，60秒自动收起）；会话结束/空闲时收起气泡并复位标记
+        if (!s.active || !s.stepId) {
+            lastBubbleStep = null;
+            hideStepBubble();
+            return;
+        }
+        if (s.stepId !== lastBubbleStep) {
             lastBubbleStep = s.stepId;
             showStepBubble(s.stepId);
         }
